@@ -1,0 +1,148 @@
+---
+title: "CQ Example"
+author: "Kieran healy"
+date: "1/24/2019"
+output: html_document
+---
+
+# Setup
+
+```{r onetime, eval = FALSE}
+
+usethis::use_git()
+
+```
+
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(janitor)
+library(lubridate)
+library(socviz)
+
+```
+
+
+# CQ Data
+
+
+## Load it
+
+```{r load}
+
+filenames <- dir(path = "data/clean",
+                 pattern = "*.csv",
+                 full.names = TRUE)
+
+filenames
+
+data <- filenames %>% map_dfr(read_csv, .id = "congress")
+
+data <- clean_names(data)
+
+```
+
+## Recodes
+
+```{r recoding-1}
+
+## The start variable is CQs and coded 01/03/1945
+data$start <- mdy(data$start)
+
+sessions <- as.tibble(data.frame(congress = 79:116,
+                       start_year = seq(1945, 2019, by = 2),
+                       end_year = seq(1947, 2021, by = 2)))
+sessions$start_year <- int_to_year(sessions$start_year, "01", "03")
+sessions$end_year <- int_to_year(sessions$end_year, "01", "03")
+
+
+data$congress <- as.numeric(data$congress) + 78
+data$born <- mdy(data$born)
+data$death <- mdy(data$death)
+
+data
+```
+
+
+```{r jwervin}
+
+data$born[data$last == "Ervin" & data$first == "Joseph"] <- ymd("1901-03-01")
+
+```
+
+Join sessions to main data.
+
+```{r sessions}
+data <- left_join(data, sessions)
+
+data$name_dob <- with(data, paste(last, middle, first, born, sep = "--"))
+
+name_dob <- as.character(unique(data$name_dob))
+persons <- tibble(pid = 1:length(name_dob),
+                  name_dob = name_dob)
+
+data <- left_join(data, persons)
+
+data <- data %>% mutate(start_age = calc_age(born, start_year))
+
+data %>% mutate(start_age = calc_age(born, start_year)) %>% select(start_age)
+
+```
+
+
+William Joseph Green Jr and William Joseph Green III are father
+and son; the latter succeeded to his father's seat. The raw data
+have a mistaken entry for the son in the 79th (1945) congress,
+giving his `start_age` as 6.
+
+```{r wjgreen}
+
+ind <- which(with(data, congress == 79 & ## 1945
+                        last == "Green" &
+                        middle == "Joseph" &
+                        first == "William" &
+                        suffix == "III")) ## but this is the son
+
+data <- data[-ind,]
+
+
+```
+
+## New Variables
+
+```{r newvariables}
+
+## poc: Person of color; binary
+data_all$poc <- recode(data_all$race, "White" = "White", .default = "Non-White")
+
+## days_old: N days old
+data_all  <- data_all %>% mutate(days_old = calc_age(born, start_year, "day"))
+
+## months_old: N months old
+data_all  <- data_all %>% mutate(months_old = calc_age(born, start_year, "month"))
+
+## full_name: Full Name
+data_all  <- data_all %>% mutate(full_name = paste(first, last, suffix))
+
+## end_career: Date of end career
+data_all  <- data_all %>% mutate(end_career = mdy(end))
+
+## entry_age:  Age when first entered congress
+data_all <- data_all %>% mutate(entry_age = calc_age(born, start))
+
+## yr_fac: start_year as a factor rather than a date
+data_all$yr_fac <- factor(year(data_all$start_year))
+
+
+```
+
+```{r cleanwrite}
+
+write_csv(data_all, "data/generated/congress79_116.csv")
+
+```
+
+
+
