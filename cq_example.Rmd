@@ -27,11 +27,11 @@ library(socviz)
 ```{r local-functions}
 
 ## Calculate age in years, months, or days
-calc_age <- function(birthDate, refDate = Sys.Date(), unit = "year") {
+calc_age <- function(birth_date, ref_date = Sys.Date(), unit = "year") {
 
     require(lubridate)
 
-    period <- as.period(interval(birthDate, refDate),
+    period <- as.period(interval(birth_date, ref_date),
                         unit = unit)
 
     switch(unit,
