@@ -69,19 +69,25 @@ data <- clean_names(data)
 
 ```{r recoding-1}
 
-## The start variable is CQs and coded 01/03/1945
-data$start <- mdy(data$start)
+## The start and end and other date variables are CQ's and coded 01/03/1945 (i.e. m/d/y)
+## We use lubridate's mdy() to convert them to date objects.
+data <- data %>% 
+  mutate(start = mdy(start), 
+         end = mdy(end), 
+         born = mdy(born), 
+         death = mdy(death))
 
-sessions <- as.tibble(data.frame(congress = 79:116,
+sessions <- as_tibble(data.frame(congress = 79:116,
                        start_year = seq(1945, 2019, by = 2),
                        end_year = seq(1947, 2021, by = 2)))
-sessions$start_year <- int_to_year(sessions$start_year, "01", "03")
-sessions$end_year <- int_to_year(sessions$end_year, "01", "03")
+
+sessions <- sessions %>% 
+  mutate(start_year = int_to_year(start_year, "01", "03"),
+         end_year = int_to_year(end_year, "01", "03"))
 
 
-data$congress <- as.numeric(data$congress) + 78
-data$born <- mdy(data$born)
-data$death <- mdy(data$death)
+data <- data %>% 
+  mutate(congress = as.numeric(congress) + 78)
 
 data
 ```
@@ -98,17 +104,25 @@ Join sessions to main data.
 ```{r sessions}
 data <- left_join(data, sessions)
 
-data$name_dob <- with(data, paste(last, middle, first, born, sep = "--"))
 
+## Character Vector of all name-dob combinations 
+data <- data %>% 
+  mutate(name_dob = paste(last, middle, first, born, sep = "--"))
+
+## Uniques
 name_dob <- as.character(unique(data$name_dob))
+
+## create pid for unique name_dobs
 persons <- tibble(pid = 1:length(name_dob),
                   name_dob = name_dob)
 
 data <- left_join(data, persons)
 
-data <- data %>% mutate(start_age = calc_age(born, start_year))
+data <- data %>% 
+  mutate(start_age = calc_age(born, start_year))
 
-data %>% mutate(start_age = calc_age(born, start_year)) %>% select(start_age)
+data %>% 
+  select(start_age)
 
 ```
 
@@ -133,37 +147,46 @@ data <- data[-ind,]
 
 ## New Variables
 
+- `poc`: Person of color; binary
+- `days_old`: N days old
+- `months_old`: N months old
+- `full_name`: Full Name
+- `end_career`: Date of end career
+- `entry_age`:  Age when first entered congress
+- `yr_fac`: start_year as a factor rather than a date
+
 ```{r newvariables}
 
-## poc: Person of color; binary
-data_all$poc <- recode(data_all$race, "White" = "White", .default = "Non-White")
-
-## days_old: N days old
-data_all  <- data_all %>% mutate(days_old = calc_age(born, start_year, "day"))
-
-## months_old: N months old
-data_all  <- data_all %>% mutate(months_old = calc_age(born, start_year, "month"))
-
-## full_name: Full Name
-data_all  <- data_all %>% mutate(full_name = paste(first, last, suffix))
-
-## end_career: Date of end career
-data_all  <- data_all %>% mutate(end_career = mdy(end))
-
-## entry_age:  Age when first entered congress
-data_all <- data_all %>% mutate(entry_age = calc_age(born, start))
-
-## yr_fac: start_year as a factor rather than a date
-data_all$yr_fac <- factor(year(data_all$start_year))
+data <- data %>% 
+  mutate(poc = recode(race, "White" = "White", .default = "Non-White"),
+         days_old = calc_age(born, start_year, "day"),
+         months_old = calc_age(born, start_year, "month"),
+         full_name = paste(first, last, suffix),
+         entry_age = calc_age(born, start),
+         yr_fac = factor(year(start_year)))
 
 
 ```
 
 ```{r cleanwrite}
 
-write_csv(data_all, "data/generated/congress79_116.csv")
+write_csv(data, "data/generated/congress79_116.csv")
 
 ```
 
 
+```{r}
+
+mean_age <- data %>% filter(position == "U.S. Representative") %>%
+    group_by(congress) %>%
+    summarize(year = first(start_year), mean_age = mean(start_age, na.rm = TRUE))
+
+data %>% filter(position == "U.S. Representative",
+                    party %in% c("Democrat", "Republican")) %>%
+    group_by(congress, sex, party) %>%
+    summarize(year = first(start_year), mean_age = mean(start_age)) %>%
+    filter(congress == 100)
+
+
+```
 
